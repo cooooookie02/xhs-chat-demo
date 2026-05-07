@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>私信回复</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif; background: #FAFAF9; margin: 0; }
+  .card { background: white; border-radius: 16px; border: 1px solid #F0F0EE; }
+  .chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 500; }
+  .chip-green { background: #F3F4F6; color: #374151; }
+  .chip-blue  { background: #F3F4F6; color: #374151; }
+  .chip-orange{ background: #FFF7ED; color: #C2410C; }
+  .chip-red   { background: #FEF2F2; color: #DC2626; }
+  .chip-gray  { background: #F3F4F6; color: #6B7280; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+  .bg-green-500 { background: #22C55E; }
+  .num-font { font-family: "SF Pro Display", -apple-system, sans-serif; font-feature-settings: "tnum"; }
+
+  /* toast */
+  #toast {
+    position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: rgba(0,0,0,0.75); color: #fff; padding: 8px 20px; border-radius: 20px;
+    font-size: 13px; opacity: 0; transition: all 0.3s; z-index: 9999; white-space: nowrap;
+  }
+
+  /* cside animations */
+  @keyframes csideBubbleIn { from { opacity: 0; transform: translateY(8px) scale(0.95); } to { opacity: 1; transform: none; } }
+  .cside-bubble-in { animation: csideBubbleIn 0.32s cubic-bezier(0.22,1,0.36,1) both; }
+  .cside-typing { display: inline-flex; gap: 3px; padding: 6px 8px; }
+  .cside-typing span { width: 5px; height: 5px; border-radius: 50%; background: #c4c4c4; animation: csideTypingDot 1.2s infinite ease-in-out; }
+  .cside-typing span:nth-child(2) { animation-delay: 0.2s; }
+  .cside-typing span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes csideTypingDot { 0%, 60%, 100% { opacity: 0.3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-thumb { background: #E5E7EB; border-radius: 3px; }
+
+  /* 左侧导航栏 */
+  .sidebar {
+    width: 200px; min-width: 200px; height: 100vh;
+    background: #fff; border-right: 1px solid #F0F0EE;
+    display: flex; flex-direction: column;
+    flex-shrink: 0;
+  }
+  .sidebar-logo {
+    display: flex; align-items: center; gap: 10px;
+    padding: 20px 16px 16px; border-bottom: 1px solid #F5F5F3;
+  }
+  .sidebar-logo-icon {
+    width: 32px; height: 32px; background: #FF2442; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 700; font-size: 14px; flex-shrink: 0;
+  }
+  .sidebar-logo-text { font-weight: 700; font-size: 15px; color: #111; }
+
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 16px; font-size: 14px; color: #555;
+    border-radius: 8px; margin: 1px 8px;
+    cursor: default; user-select: none;
+    transition: background 0.15s;
+  }
+  .nav-item:hover { background: #F7F7F5; }
+  .nav-item.active { background: #FFF1F2; color: #FF2442; font-weight: 600; }
+  .nav-item.active svg { stroke: #FF2442; }
+
+  .nav-section-label {
+    font-size: 11px; color: #AAAAAA; font-weight: 500;
+    padding: 12px 24px 4px; letter-spacing: 0.5px;
+  }
+
+  .sidebar-bottom {
+    margin-top: auto; padding: 12px 16px;
+    border-top: 1px solid #F5F5F3;
+    display: flex; align-items: center; gap-10px;
+  }
+  .sidebar-avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: #FFF1F2; display: flex; align-items: center;
+    justify-content: center; font-size: 12px; font-weight: 600; color: #FF2442;
+  }
+
+  /* 右侧用户卡片新样式 */
+  .user-avatar-lg {
+    width: 48px; height: 48px; border-radius: 50%;
+    background: #F97316; display: flex; align-items: center;
+    justify-content: center; flex-shrink: 0; color: #fff; font-size: 20px;
+  }
+  .follow-btn {
+    padding: 5px 14px; border: 1px solid #D1D5DB; border-radius: 8px;
+    font-size: 13px; color: #374151; background: #fff; cursor: default;
+  }
+  .user-meta-row {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: #6B7280;
+  }
+  .user-meta-sep { color: #D1D5DB; }
+  .xhs-link { color: #3B82F6; font-size: 12px; text-decoration: none; cursor: default; }
+  .info-label { font-size: 12px; color: #9CA3AF; min-width: 72px; }
+  .info-value { font-size: 12px; color: #111; font-weight: 500; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body class="text-gray-900" style="display:flex;height:100vh;overflow:hidden;">
+
+<!-- toast -->
+<div id="toast"></div>
+
+<!-- 左侧导航栏（只展示，点击无效） -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div class="sidebar-logo-icon">薯</div>
+    <span class="sidebar-logo-text">XXX 教育</span>
+  </div>
+
+  <div style="padding: 8px 0; flex: 1; overflow-y: auto;">
+    <!-- 主导航 -->
+    <div class="nav-item">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      <span>首页</span>
+    </div>
+    <div class="nav-item">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <span>数字员工管理</span>
+    </div>
+    <div class="nav-item">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      <span>Skill 市场</span>
+    </div>
+    <div class="nav-item">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      <span>内容库</span>
+    </div>
+    <div class="nav-item">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <span>经营管理</span>
+    </div>
+
+    <!-- 原有功能 -->
+    <div class="nav-section-label">原有功能</div>
+    <div class="nav-item active">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3 7 12 13 21 7"/></svg>
+      <span>私信回复</span>
+    </div>
+    <div class="nav-item">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      <span>私信授权</span>
+    </div>
+  </div>
+
+  <!-- 底部用户 -->
+  <div class="sidebar-bottom">
+    <div class="sidebar-avatar">曲</div>
+    <span style="font-size:13px;color:#555;margin-left:8px;">小曲</span>
+  </div>
+</nav>
+
+<!-- 私信回复页面，原样保留 -->
+<div id="page-chat" style="flex:1;height:100vh;padding:16px;overflow:hidden;display:flex;flex-direction:column;min-width:0;">
+
+  <div class="flex flex-col h-full">
+
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;flex:1;min-height:0;">
+
+    <!-- 左：对话区 -->
+    <div class="card overflow-hidden flex flex-col h-full">
+      <!-- 顶部客户简要信息 -->
+      <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-[#FFF1F2] rounded-full flex items-center justify-center text-sm font-medium">小</div>
+          <div>
+            <div class="font-semibold flex items-center gap-2">
+              小诺爸爸
+              <span class="chip chip-red text-[10px]">热</span>
+              <span class="chip chip-orange text-[10px]">请求转人工</span>
+            </div>
+            <div class="text-xs text-gray-500 mt-0.5">小红书 ID: 8821334451 · 2026-04-15 09:32 开始对话</div>
+          </div>
+        </div>
+        <div class="flex gap-2" id="takeover-btn-wrap" style="display:none!important"></div>
+      </div>
+
+      <!-- 对话气泡区 -->
+      <div class="flex-1 p-5 bg-gray-50/30 overflow-y-auto" style="display:flex;flex-direction:column;gap:12px;">
+
+        <!-- 日期分割 -->
+        <div class="text-center text-xs text-gray-400 py-1">2026-04-15 周二</div>
+
+        <!-- 系统提示 -->
+        <div style="display:flex;justify-content:center;margin:4px 0;">
+          <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:100px;padding:5px 16px;font-size:11px;color:#6B7280;display:flex;align-items:center;gap:5px;">
+            <span>🔒</span>
+            <span>「温馨提示」有用户进入会话，为保障消费者权益，沟通等服务信息将被记录</span>
+          </div>
+        </div>
+
+
+      </div>
+
+      <!-- 输入框 -->
+      <div class="border-t border-gray-100 p-4 bg-white">
+        <div class="flex items-end gap-2">
+          <div class="flex gap-1 mr-1">
+            <button class="w-8 h-8 hover:bg-gray-50 rounded flex items-center justify-center text-gray-400 hover:text-gray-600" title="表情"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="shrink-0"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></button>
+            <button class="w-8 h-8 hover:bg-gray-50 rounded flex items-center justify-center text-gray-400 hover:text-gray-600" title="图片"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="shrink-0"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+            <button class="w-8 h-8 hover:bg-gray-50 rounded flex items-center justify-center text-gray-400 hover:text-gray-600" title="快捷回复"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="shrink-0"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></button>
+          </div>
+          <textarea id="chat-input" placeholder="输入消息，Enter 发送…" class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none" rows="2" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();chatSendMsg()}" oninput="chatAutoTakeover()"></textarea>
+          <button onclick="chatSendMsg()" class="px-5 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium">发送</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右：客户信息栏 -->
+    <div class="card overflow-y-auto h-full" style="min-width:0;">
+
+      <!-- 用户基本信息（新版样式） -->
+      <div class="px-4 py-4 border-b border-gray-100">
+        <!-- 头像 + 姓名 + 关注 -->
+        <div class="flex items-start justify-between mb-3">
+          <div class="flex items-center gap-3">
+            <div class="user-avatar-lg">⚠</div>
+            <div>
+              <div class="flex items-center gap-1.5" style="margin-bottom:4px;">
+                <span style="font-size:15px;font-weight:700;color:#111;">小红薯6958F37D</span>
+                <span class="dot bg-green-500" style="margin:0" title="在线"></span>
+              </div>
+              <div class="user-meta-row">
+                <span>非粉丝</span>
+                <span class="user-meta-sep">·</span>
+                <span>女</span>
+                <span class="user-meta-sep">·</span>
+                <span>28岁</span>
+              </div>
+            </div>
+          </div>
+          <button class="follow-btn">+ 关注</button>
+        </div>
+
+        <!-- 地域 + 主页链接 -->
+        <div style="font-size:12px;color:#374151;margin-bottom:8px;display:flex;align-items:center;gap:4px;">
+          <span>北京市-北京市</span>
+          <a class="xhs-link" style="display:flex;align-items:center;gap:2px;">
+            小红书主页
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+          </a>
+        </div>
+
+        <!-- 小红书号 / uid -->
+        <div style="display:flex;flex-direction:column;gap:5px;">
+          <div style="display:flex;align-items:center;gap:0;">
+            <span class="info-label">小红书号</span>
+            <span class="info-value">6187714512</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:0;">
+            <span class="info-label">小红书uid</span>
+            <span class="info-value" style="font-size:11px;word-break:break-all;">64004eb2000000000 1001e037</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI 洞察 -->
+      <div class="p-4 border-b border-gray-100">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-sm font-medium">AI 洞察</div>
+          <button class="text-gray-400 hover:text-gray-600 text-xs">∧</button>
+        </div>
+
+        <!-- 客户画像 -->
+        <div class="bg-gray-50 rounded-lg p-3 mb-3">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-[11px] text-gray-500 font-medium flex items-center gap-1">
+              客户画像
+              <span class="relative inline-block group">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-gray-400 cursor-help"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <span class="absolute left-0 bottom-full mb-1 hidden group-hover:block z-50 w-52 p-2 text-[10px] rounded leading-relaxed" style="background:rgba(240,240,240,0.92);color:#555;backdrop-filter:blur(4px);border:1px solid rgba(0,0,0,0.06);box-shadow:0 2px 8px rgba(0,0,0,0.08)">AI 模型综合客户信息、站内行为、对话内容等智能推理，仅供参考</span>
+              </span>
+            </div>
+            <button onclick="toggleProfileEdit()" class="text-gray-400 hover:text-gray-600" title="编辑">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+          </div>
+          <!-- 显示态 -->
+          <div id="profile-display" class="text-xs text-gray-700 leading-relaxed" style="color:#9CA3AF;">加载中</div>
+          <!-- 编辑态 -->
+          <textarea id="profile-edit" class="hidden w-full text-xs text-gray-700 leading-relaxed p-2 border border-gray-200 rounded resize-none" rows="4" maxlength="300">客户可能为初一学生家长（父亲），关注暑期如何进行提分，已做过较为充分的信息收集，关注 1v1 名师授课，处于初步了解阶段，对试听/诊断课接受度较高。</textarea>
+          <div id="profile-edit-actions" class="hidden flex gap-1.5 mt-1.5">
+            <button onclick="saveProfileEdit()" class="flex-1 text-[10px] py-1 bg-gray-900 text-white rounded">保存</button>
+            <button onclick="cancelProfileEdit()" class="flex-1 text-[10px] py-1 bg-white border border-gray-200 text-gray-600 rounded">取消</button>
+          </div>
+        </div>
+
+        <!-- 推荐回复 -->
+        <div class="bg-gray-50 rounded-lg p-3">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-[11px] text-gray-500 font-medium">推荐回复</div>
+            <button onclick="toggleSugEdit()" id="sug-edit-btn" class="text-gray-400 hover:text-gray-600" title="编辑">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+          </div>
+          <!-- 显示态 -->
+          <div id="sug-text" class="text-xs text-gray-800 leading-relaxed mb-2" style="white-space:pre-wrap;color:#9CA3AF;">加载中</div>
+          <!-- 编辑态 -->
+          <textarea id="sug-edit" class="hidden w-full text-xs text-gray-800 leading-relaxed p-1.5 border border-gray-200 rounded resize-none mb-2" rows="5" maxlength="300">暑假是英语查漏补缺、拉开差距的关键期。孩子现在英语大概多少分？主要是想补弱提分，还是暑假提前学下学期内容呢？我们这边可以先给孩子做一次免费的英语诊断/体验课，重点看语法、阅读、写作这些模块，再根据孩子基础匹配老师和提升方案。</textarea>
+          <button id="sug-adopt-btn" onclick="adoptRecommendedReply()" class="w-full px-2 py-1.5 bg-gray-900 text-white text-[11px] rounded font-medium">采纳</button>
+        </div>
+      </div>
+
+      <!-- 客资信息 -->
+      <div class="p-4">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-sm font-medium">客资信息</div>
+          <button class="text-xs text-gray-500">编辑</button>
+        </div>
+        <div class="space-y-2 text-xs">
+          <div class="flex justify-between">
+            <span class="text-gray-500">客资标签</span>
+            <span class="chip chip-orange text-[10px]">已留资</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-500">手机号码</span>
+            <span class="font-medium num-font">159****3309</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-500">微信账号</span>
+            <span class="font-medium">nuo_papa_2018</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-500">小红书 ID</span>
+            <span class="font-medium num-font">8821334451</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-500">所属地域</span>
+            <span class="font-medium">北京市</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-500">来源</span>
+            <span class="font-medium">投流 · 初一英语_v2</span>
+          </div>
+        </div>
+        <div class="mt-3 pt-3 border-t border-gray-100">
+          <div class="text-xs text-gray-500 mb-1.5">备注</div>
+          <textarea placeholder="记录跟进情况..." class="w-full px-2 py-1.5 border border-gray-200 rounded text-xs resize-none" rows="2"></textarea>
+        </div>
+
+        <!-- 进线归因 -->
+        <div class="mt-3 pt-3 border-t border-gray-100">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-sm font-medium">进线归因</div>
+            <button class="text-gray-400 hover:text-gray-600">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+            </button>
+          </div>
+          <div class="space-y-2 text-xs">
+            <div class="flex justify-between">
+              <span class="text-gray-500">归因笔记</span>
+              <span class="font-medium flex items-center gap-1">初一英语提分攻略，暑期不躺平 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">笔记作者</span>
+              <span class="font-medium flex items-center gap-1">小薯教育官方号 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">进线搜索关键词</span>
+              <span class="font-medium">初一英语补习班</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">计划名称/ID</span>
+              <span class="font-medium text-gray-600 truncate max-w-[130px]">暑期提分_初中英语_v2…</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">创意名称/ID</span>
+              <span class="font-medium text-gray-600 truncate max-w-[130px]">英语满分冲刺_横版_A…</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">投放账户名称/ID</span>
+              <span class="font-medium text-gray-600">小薯教育_主投账户</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+//  多轮对话数据
+// ══════════════════════════════════════════════
+var ROUNDS = [
+  // round 0 — 初始状态（未开口，接管后展示）
+  {
+    profile: '客户可能为初一学生家长（父亲），关注暑期如何进行提分，已做过较为充分的信息收集，关注 1v1 名师授课，处于初步了解阶段，对试听/诊断课接受度较高。',
+    sug:     '暑假是英语查漏补缺、拉开差距的关键期。孩子现在英语大概多少分？主要是想补弱提分，还是暑假提前学下学期内容呢？我们这边可以先给孩子做一次免费的英语诊断/体验课，重点看语法、阅读、写作这些模块，再根据孩子基础匹配老师和提升方案。',
+    // 接管后客户发过来的消息（触发下一轮）
+    customerMsg: null,
+    customerTime: null
+  },
+  // round 1 — 客户第一条消息后
+  {
+    customerMsg:  '你好，想了解一下你们的初一英语课程',
+    customerTime: '09:32',
+    profile: '客户可能为初一学生家长（父亲），关注暑期如何进行提分，已做过较为充分的信息收集，目标产品为初一英语课程。关注 1v1 名师授课，对试听/诊断课接受度较高。',
+    sug:     '您好，我们储备了丰富的教学资源，除了大、小班课也有1v1的名师授课可供选择噢～孩子目前英语基础怎么样呀？是准备暑假提前补，还是期末后查漏补缺呢？'
+  },
+  // round 2 — 客户第二条消息后
+  {
+    customerMsg:  '不太好，期末英语 70 分，主要是语法和写作弱，想做1v1的提升',
+    customerTime: '09:34',
+    profile: '客户为初一学生家长（父亲），孩子期末英语 70 分，主要弱项在语法和写作。痛点清晰。明确表达偏好 1v1 名师授课，对试听/诊断课接受度较高，建议强调师资水平和针对性提分路径。',
+    sug:     '70分语法写作薄弱，这个情况很典型！我们有专门针对初一的「语法写作专项 1v1」，12课时 ¥2,800，先给孩子安排一次免费诊断课定位薄弱点，再制定个性化计划。本周报名还送1节课，要不先约个体验？'
+  },
+  // round 3 — 客户第三条消息后（完成留资）
+  {
+    customerMsg:  '免费体验怎么约？',
+    customerTime: '09:36',
+    profile: '客户为初一学生家长（父亲），孩子期末英语 70 分，主要弱项在语法和写作。痛点清晰。明确表达偏好 1v1 名师授课，主动询问课程匹配和体验预约方式，决策信号明确。',
+    sug:     '约体验课直接登记一下就行，老师会提前跟您沟通孩子情况：\n填完我这边马上给您安排，名师资源有限，本周还剩 3 个名额哦～'
+  }
+];
+
+var _chatTakenOver = false;
+var _currentRound  = 0;   // 0 = 接管后初始；每次客户回复后 +1
+var _waitingForCustomer = false;
+
+// ══════════════════════════════════════════════
+//  接管
+// ══════════════════════════════════════════════
+function _doTakeover() {
+  if (_chatTakenOver) return;
+  _chatTakenOver = true;
+
+  var btn = document.getElementById('chat-takeover-btn');
+  if (btn) { btn.textContent = '✓ 已接管'; btn.style.background = '#10B981'; btn.disabled = true; }
+
+  showToast('✅ 已接管，AI 回复已暂停，等待你发送消息');
+
+  // 在对话区插入系统消息
+  var msgArea = getMsgArea();
+  if (msgArea) {
+    var sysMsg = document.createElement('div');
+    sysMsg.style.cssText = 'display:flex;justify-content:center;margin:8px 0';
+    sysMsg.innerHTML = '<span style="font-size:11px;color:#10B981;background:#F0FDF4;border:1px solid #BBF7D0;padding:3px 12px;border-radius:100px">✓ 小曲 已接管此对话，AI 回复已暂停</span>';
+    msgArea.appendChild(sysMsg);
+    msgArea.scrollTop = msgArea.scrollHeight;
+  }
+
+  // 刷新 AI 洞察 → round 0
+  _refreshInsight(0);
+}
+
+window.chatTakeover    = function() { _doTakeover(); };
+window.chatAutoTakeover = function() {
+  var inp = document.getElementById('chat-input');
+  if (inp && inp.value.trim().length > 0) _doTakeover();
+};
+
+// ══════════════════════════════════════════════
+//  发送消息
+// ══════════════════════════════════════════════
+window.chatSendMsg = function() {
+  var inp = document.getElementById('chat-input');
+  if (!inp) return;
+  var text = inp.value.trim();
+  if (!text) return;
+  if (_waitingForCustomer) return;  // 防重复点击
+
+  _doTakeover();
+  inp.value = '';
+
+  // 插入销售气泡
+  var msgArea = getMsgArea();
+  if (msgArea) {
+    var bubble = document.createElement('div');
+    bubble.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin:6px 0';
+    bubble.innerHTML =
+      '<div style="max-width:72%;">' +
+        '<div style="font-size:11px;color:#9CA3AF;margin-bottom:3px;text-align:right">刚刚 · 我</div>' +
+        '<div style="background:#FF2442;color:#fff;border-radius:16px 16px 2px 16px;padding:9px 14px;font-size:13px;line-height:1.6;white-space:pre-wrap">' + esc(text) + '</div>' +
+      '</div>' +
+      '<div style="width:28px;height:28px;background:#FFE4E6;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;font-weight:600;color:#FF2442;align-self:flex-end">曲</div>';
+    msgArea.appendChild(bubble);
+    msgArea.scrollTop = msgArea.scrollHeight;
+  }
+
+  // 重置采纳按钮
+  _resetAdoptBtn();
+
+  // 下一轮有客户回复则触发；若是最后一轮则触发留资卡片
+  var nextRound = _currentRound + 1;
+  if (nextRound < ROUNDS.length && ROUNDS[nextRound].customerMsg) {
+    _waitingForCustomer = true;
+    _showTyping(nextRound);
+  } else if (_currentRound === ROUNDS.length - 1) {
+    // 最后一轮推荐话术发完 → 延迟后自动发留资卡片
+    _waitingForCustomer = true;
+    setTimeout(_showLeadCard, 1800);
+  }
+};
+
+// ══════════════════════════════════════════════
+//  模拟客户打字 → 出现消息 → 刷新 AI 洞察
+// ══════════════════════════════════════════════
+function _showTyping(nextRound) {
+  var msgArea = getMsgArea();
+  if (!msgArea) return;
+
+  // 打字动画气泡
+  var typing = document.createElement('div');
+  typing.id = 'typing-indicator';
+  typing.style.cssText = 'display:flex;justify-content:flex-start;gap:8px;margin:6px 0';
+  typing.innerHTML =
+    '<div style="width:28px;height:28px;background:#FEF2F2;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;align-self:flex-end">⚠</div>' +
+    '<div style="background:#fff;border:1px solid #F0F0EE;border-radius:16px 16px 16px 2px;padding:10px 14px;">' +
+      '<div style="display:inline-flex;gap:4px;">' +
+        '<span style="width:5px;height:5px;border-radius:50%;background:#C4C4C4;animation:dot 1.2s infinite ease-in-out"></span>' +
+        '<span style="width:5px;height:5px;border-radius:50%;background:#C4C4C4;animation:dot 1.2s 0.2s infinite ease-in-out"></span>' +
+        '<span style="width:5px;height:5px;border-radius:50%;background:#C4C4C4;animation:dot 1.2s 0.4s infinite ease-in-out"></span>' +
+      '</div>' +
+    '</div>';
+  msgArea.appendChild(typing);
+  msgArea.scrollTop = msgArea.scrollHeight;
+
+  setTimeout(function() {
+    // 移除打字动画
+    var t = document.getElementById('typing-indicator');
+    if (t) t.remove();
+
+    var round = ROUNDS[nextRound];
+    // 插入客户消息
+    var bubble = document.createElement('div');
+    bubble.style.cssText = 'display:flex;justify-content:flex-start;gap:8px;margin:6px 0';
+    bubble.innerHTML =
+      '<div style="width:28px;height:28px;background:#FEF2F2;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;align-self:flex-end">⚠</div>' +
+      '<div style="max-width:72%;">' +
+        '<div style="font-size:11px;color:#9CA3AF;margin-bottom:3px">' + round.customerTime + '</div>' +
+        '<div style="background:#fff;border:1px solid #F0F0EE;border-radius:16px 16px 16px 2px;padding:9px 14px;font-size:13px;line-height:1.6">' + esc(round.customerMsg) + '</div>' +
+      '</div>';
+    var ma = getMsgArea();
+    if (ma) { ma.appendChild(bubble); ma.scrollTop = ma.scrollHeight; }
+
+    _currentRound = nextRound;
+    _waitingForCustomer = false;
+
+    // 刷新 AI 洞察（带思考动画）
+    _refreshInsightAnimated(nextRound);
+  }, 1500);
+}
+
+// ══════════════════════════════════════════════
+//  留资卡片 + 完成提示
+// ══════════════════════════════════════════════
+function _showLeadCard() {
+  var ma = getMsgArea();
+  if (!ma) return;
+
+  // 发送留资卡片气泡（销售侧发出）
+  var card = document.createElement('div');
+  card.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin:6px 0';
+  card.innerHTML =
+    '<div style="max-width:72%;">' +
+      '<div style="font-size:11px;color:#9CA3AF;margin-bottom:3px;text-align:right">刚刚 · 我</div>' +
+      '<div style="background:#fff;border:1px solid #F0F0EE;border-radius:16px 16px 2px 16px;padding:12px 14px;font-size:13px;line-height:1.6;min-width:200px;">' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
+          '<div style="width:36px;height:36px;background:#FFF1F2;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
+            '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF2442" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>' +
+          '</div>' +
+          '<div>' +
+            '<div style="font-size:13px;font-weight:600;color:#111;">预约免费体验课</div>' +
+            '<div style="font-size:11px;color:#9CA3AF;margin-top:1px;">填写姓名 · 手机号 · 孩子年级</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="background:#FF2442;color:#fff;border-radius:8px;padding:7px 0;font-size:12px;font-weight:600;text-align:center;">立即预约 →</div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="width:28px;height:28px;background:#FFE4E6;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;font-weight:600;color:#FF2442;align-self:flex-end">曲</div>';
+  ma.appendChild(card);
+  ma.scrollTop = ma.scrollHeight;
+
+  // 2s 后出现「用户已打开」系统提示
+  setTimeout(function() {
+    var notice = document.createElement('div');
+    notice.style.cssText = 'display:flex;justify-content:center;margin:10px 0;';
+    notice.innerHTML =
+      '<div style="display:flex;align-items:center;gap:6px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:100px;padding:5px 16px;font-size:12px;color:#166534;animation:fadeInUp .4s ease both">' +
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' +
+        '用户已打开预约留资卡，留资完成' +
+      '</div>';
+    ma.appendChild(notice);
+    ma.scrollTop = ma.scrollHeight;
+    _waitingForCustomer = false;
+  }, 2000);
+}
+
+// ══════════════════════════════════════════════
+//  AI 洞察刷新
+// ══════════════════════════════════════════════
+function _refreshInsight(roundIdx) {
+  var r = ROUNDS[roundIdx];
+  // 画像
+  var pd = document.getElementById('profile-display');
+  var pe = document.getElementById('profile-edit');
+  if (pd) pd.textContent = r.profile;
+  if (pe) pe.value = r.profile;
+  // 推荐回复
+  var st = document.getElementById('sug-text');
+  var se = document.getElementById('sug-edit');
+  if (st) st.textContent = r.sug;
+  if (se) se.value = r.sug;
+  _resetAdoptBtn();
+}
+
+function _refreshInsightAnimated(roundIdx) {
+  // 先让画像/推荐回复区域显示"AI 分析中…"占位
+  var pd = document.getElementById('profile-display');
+  var st = document.getElementById('sug-text');
+  var adoptBtn = document.getElementById('sug-adopt-btn');
+
+  if (pd) { pd.style.opacity = '0.4'; pd.textContent = '加载中'; }
+  if (st) { st.style.opacity = '0.4'; st.textContent = '加载中'; }
+  if (adoptBtn) { adoptBtn.disabled = true; }
+
+  setTimeout(function() {
+    var r = ROUNDS[roundIdx];
+    if (pd) { pd.style.opacity = '1'; pd.textContent = r.profile; }
+    if (st) { st.style.opacity = '1'; st.textContent = r.sug; }
+    var pe = document.getElementById('profile-edit');
+    var se = document.getElementById('sug-edit');
+    if (pe) pe.value = r.profile;
+    if (se) se.value = r.sug;
+    _resetAdoptBtn();
+  }, 1200);
+}
+
+// ══════════════════════════════════════════════
+//  采纳
+// ══════════════════════════════════════════════
+window.adoptRecommendedReply = function() {
+  var textDiv  = document.getElementById('sug-text');
+  var editArea = document.getElementById('sug-edit');
+  var btn      = document.getElementById('sug-adopt-btn');
+  if (!textDiv || !editArea) return;
+  var isEditing = !editArea.classList.contains('hidden');
+  var content   = isEditing ? editArea.value : textDiv.innerText;
+
+  var chatInput = document.getElementById('chat-input');
+  if (chatInput) {
+    chatInput.value = content;
+    chatInput.focus();
+    chatInput.style.transition = 'background 0.3s';
+    chatInput.style.background = '#FFF1F2';
+    setTimeout(function() { chatInput.style.background = ''; }, 600);
+  }
+  if (isEditing) window.toggleSugEdit();
+  if (btn) {
+    btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:inline;vertical-align:-1px;margin-right:3px"><polyline points="20 6 9 17 4 12"/></svg>已采纳';
+    btn.classList.remove('bg-emerald-50','text-emerald-700','border','border-emerald-200');
+    btn.classList.add('bg-gray-900','text-white');
+    btn.disabled = true;
+  }
+};
+
+function _resetAdoptBtn() {
+  var btn = document.getElementById('sug-adopt-btn');
+  if (!btn) return;
+  btn.innerHTML = '采纳';
+  btn.classList.remove('bg-emerald-50','text-emerald-700','border','border-emerald-200');
+  btn.classList.add('bg-gray-900','text-white');
+  btn.disabled = false;
+}
+
+// ══════════════════════════════════════════════
+//  画像编辑
+// ══════════════════════════════════════════════
+window.toggleProfileEdit = function() {
+  var disp = document.getElementById('profile-display');
+  var edit = document.getElementById('profile-edit');
+  var actions = document.getElementById('profile-edit-actions');
+  if (!disp || !edit) return;
+  disp.classList.add('hidden');
+  edit.classList.remove('hidden');
+  if (actions) actions.classList.remove('hidden');
+  edit.focus();
+};
+
+window.saveProfileEdit = function() {
+  var disp = document.getElementById('profile-display');
+  var edit = document.getElementById('profile-edit');
+  var actions = document.getElementById('profile-edit-actions');
+  if (!disp || !edit) return;
+  disp.textContent = edit.value;
+  edit.classList.add('hidden');
+  disp.classList.remove('hidden');
+  if (actions) actions.classList.add('hidden');
+  showToast('客户画像已更新');
+};
+
+window.cancelProfileEdit = function() {
+  var disp = document.getElementById('profile-display');
+  var edit = document.getElementById('profile-edit');
+  var actions = document.getElementById('profile-edit-actions');
+  if (!disp || !edit) return;
+  edit.classList.add('hidden');
+  disp.classList.remove('hidden');
+  if (actions) actions.classList.add('hidden');
+};
+
+// ══════════════════════════════════════════════
+//  推荐回复编辑
+// ══════════════════════════════════════════════
+window.toggleSugEdit = function() {
+  var textDiv  = document.getElementById('sug-text');
+  var editArea = document.getElementById('sug-edit');
+  var btn      = document.getElementById('sug-edit-btn');
+  if (!textDiv || !editArea) return;
+  var PENCIL = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+  var CHECK  = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
+  if (editArea.classList.contains('hidden')) {
+    editArea.value = textDiv.innerText;
+    editArea.classList.remove('hidden');
+    textDiv.classList.add('hidden');
+    if (btn) { btn.innerHTML = CHECK; btn.classList.add('text-rose-600'); btn.classList.remove('text-gray-400'); }
+    editArea.focus();
+  } else {
+    textDiv.innerText = editArea.value;
+    editArea.classList.add('hidden');
+    textDiv.classList.remove('hidden');
+    if (btn) { btn.innerHTML = PENCIL; btn.classList.remove('text-rose-600'); btn.classList.add('text-gray-400'); }
+    _resetAdoptBtn();
+  }
+};
+
+// ══════════════════════════════════════════════
+//  工具函数
+// ══════════════════════════════════════════════
+function getMsgArea() {
+  return document.querySelector('#page-chat .overflow-y-auto');
+}
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.style.opacity = '1';
+  t.style.transform = 'translateX(-50%) translateY(0)';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(function() {
+    t.style.opacity = '0';
+    t.style.transform = 'translateX(-50%) translateY(20px)';
+  }, 2200);
+}
+
+// 动画 keyframes（动态注入一次）
+(function(){
+  if (document.getElementById('dot-kf')) return;
+  var s = document.createElement('style');
+  s.id = 'dot-kf';
+  s.textContent =
+    '@keyframes dot{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}' +
+    '@keyframes fadeInUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}';
+  document.head.appendChild(s);
+})();
+
+// 页面加载时自动静默接管；画像/推荐回复先显示"加载中"，1.5s 后淡入
+window.addEventListener('DOMContentLoaded', function() {
+  _chatTakenOver = true;
+  var adoptBtn = document.getElementById('sug-adopt-btn');
+  if (adoptBtn) adoptBtn.disabled = true;
+  setTimeout(function() {
+    var r = ROUNDS[0];
+    var pd = document.getElementById('profile-display');
+    var st = document.getElementById('sug-text');
+    var pe = document.getElementById('profile-edit');
+    var se = document.getElementById('sug-edit');
+    if (pd) { pd.style.transition = 'opacity .4s'; pd.style.opacity = '0'; }
+    if (st) { st.style.transition = 'opacity .4s'; st.style.opacity = '0'; }
+    setTimeout(function() {
+      if (pd) { pd.style.color = ''; pd.textContent = r.profile; pd.style.opacity = '1'; }
+      if (st) { st.style.color = ''; st.textContent = r.sug; st.style.opacity = '1'; }
+      if (pe) pe.value = r.profile;
+      if (se) se.value = r.sug;
+      _resetAdoptBtn();
+    }, 400);
+  }, 1500);
+});
+</script>
+</body>
+</html>
