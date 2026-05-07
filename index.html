@@ -304,7 +304,15 @@
           <div id="sug-text" class="text-xs text-gray-800 leading-relaxed mb-2" style="white-space:pre-wrap;color:#9CA3AF;">加载中</div>
           <!-- 编辑态 -->
           <textarea id="sug-edit" class="hidden w-full text-xs text-gray-800 leading-relaxed p-1.5 border border-gray-200 rounded resize-none mb-2" rows="5" maxlength="300">暑假是英语查漏补缺、拉开差距的关键期。孩子现在英语大概多少分？主要是想补弱提分，还是暑假提前学下学期内容呢？我们这边可以先给孩子做一次免费的英语诊断/体验课，重点看语法、阅读、写作这些模块，再根据孩子基础匹配老师和提升方案。</textarea>
-          <button id="sug-adopt-btn" onclick="adoptRecommendedReply()" class="w-full px-2 py-1.5 bg-gray-900 text-white text-[11px] rounded font-medium">采纳</button>
+          <!-- 非编辑态：只有采纳 -->
+          <div id="sug-btn-normal" class="flex gap-1.5">
+            <button id="sug-adopt-btn" onclick="adoptRecommendedReply()" class="flex-1 px-2 py-1.5 bg-gray-900 text-white text-[11px] rounded font-medium">采纳</button>
+          </div>
+          <!-- 编辑态：采纳 + 取消 -->
+          <div id="sug-btn-editing" class="hidden flex gap-1.5">
+            <button onclick="adoptRecommendedReply()" class="flex-1 px-2 py-1.5 bg-gray-900 text-white text-[11px] rounded font-medium">采纳</button>
+            <button onclick="cancelSugEdit()" class="flex-1 px-2 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] rounded font-medium">取消</button>
+          </div>
         </div>
       </div>
 
@@ -655,7 +663,7 @@ window.adoptRecommendedReply = function() {
     chatInput.style.background = '#FFF1F2';
     setTimeout(function() { chatInput.style.background = ''; }, 600);
   }
-  if (isEditing) window.toggleSugEdit();
+  if (isEditing) window.cancelSugEdit();
   if (btn) {
     btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:inline;vertical-align:-1px;margin-right:3px"><polyline points="20 6 9 17 4 12"/></svg>已采纳';
     btn.classList.remove('bg-emerald-50','text-emerald-700','border','border-emerald-200');
@@ -713,25 +721,35 @@ window.cancelProfileEdit = function() {
 //  推荐回复编辑
 // ══════════════════════════════════════════════
 window.toggleSugEdit = function() {
-  var textDiv  = document.getElementById('sug-text');
-  var editArea = document.getElementById('sug-edit');
-  var btn      = document.getElementById('sug-edit-btn');
+  var textDiv   = document.getElementById('sug-text');
+  var editArea  = document.getElementById('sug-edit');
+  var btnNormal = document.getElementById('sug-btn-normal');
+  var btnEditing= document.getElementById('sug-btn-editing');
+  var editBtn   = document.getElementById('sug-edit-btn');
   if (!textDiv || !editArea) return;
   var PENCIL = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-  var CHECK  = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
-  if (editArea.classList.contains('hidden')) {
-    editArea.value = textDiv.innerText;
-    editArea.classList.remove('hidden');
-    textDiv.classList.add('hidden');
-    if (btn) { btn.innerHTML = CHECK; btn.classList.add('text-rose-600'); btn.classList.remove('text-gray-400'); }
-    editArea.focus();
-  } else {
-    textDiv.innerText = editArea.value;
-    editArea.classList.add('hidden');
-    textDiv.classList.remove('hidden');
-    if (btn) { btn.innerHTML = PENCIL; btn.classList.remove('text-rose-600'); btn.classList.add('text-gray-400'); }
-    _resetAdoptBtn();
-  }
+  // 进入编辑态
+  editArea.value = textDiv.innerText;
+  editArea.classList.remove('hidden');
+  textDiv.classList.add('hidden');
+  if (btnNormal)  btnNormal.classList.add('hidden');
+  if (btnEditing) btnEditing.classList.remove('hidden');
+  if (editBtn) { editBtn.innerHTML = PENCIL; editBtn.classList.remove('text-rose-600'); editBtn.classList.add('text-gray-400'); }
+  editArea.focus();
+};
+
+// 取消编辑，恢复显示态
+window.cancelSugEdit = function() {
+  var textDiv   = document.getElementById('sug-text');
+  var editArea  = document.getElementById('sug-edit');
+  var btnNormal = document.getElementById('sug-btn-normal');
+  var btnEditing= document.getElementById('sug-btn-editing');
+  if (!textDiv || !editArea) return;
+  editArea.classList.add('hidden');
+  textDiv.classList.remove('hidden');
+  if (btnNormal)  btnNormal.classList.remove('hidden');
+  if (btnEditing) btnEditing.classList.add('hidden');
+  _resetAdoptBtn();
 };
 
 // ══════════════════════════════════════════════
